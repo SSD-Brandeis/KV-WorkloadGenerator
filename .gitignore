@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+load_gen
+
+# txt files
+*.txt
