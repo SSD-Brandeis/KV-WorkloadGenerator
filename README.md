@@ -7,10 +7,12 @@ The KV-WorkloadGenerator is a versatile key-value workload generator that suppor
 To compile the workload generator, simply run:
 
 ```sh
-make
+mkdir build && cd build
+cmake ..
+make -j
 ```
 
-This command produces the `load_gen` executable.
+This command produces the `load_gen` executable inside `build` directory
 
 ## Usage
 

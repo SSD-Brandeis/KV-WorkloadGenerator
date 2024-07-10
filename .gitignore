@@ -30,7 +30,9 @@
 *.exe
 *.out
 *.app
-load_gen
 
-# txt files
-*.txt
+# Ignore build folder
+**/build/**
+
+# .vscode
+**/.vscode/**
