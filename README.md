@@ -12,14 +12,14 @@ cmake ..
 make -j
 ```
 
-This command produces the `load_gen` executable inside `build` directory
+This command produces the `load_gen` executable inside `{PROJECT_DIR}/build/bin/` directory
 
 ## Usage
 
 Execute `load_gen` with the desired options:
 
 ```sh
-./load_gen {OPTIONS}
+{PROJECT_DIR}/build/bin/load_gen {OPTIONS}
 ```
 
 ### Options

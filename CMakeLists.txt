@@ -12,4 +12,6 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Key.cc
 )
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
 add_executable(load_gen ${SOURCES})
