@@ -6,7 +6,8 @@
 #define ZIPFIAN_THRESHOLD_UNIQ_ELEMENTS 1000
 #define ZIPFIAN_GENERATOR_SMALL_AREA_SIZE 50000
 
-int myrandom(int i) { return std::rand() % i; }
+std::random_device rd;
+std::mt19937 g(rd());
 
 inline int binary_search(double p, int low, int high, std::vector<double> &cdf)
 {
@@ -91,7 +92,7 @@ Generator::Generator(int dist, uint32_t lb, uint32_t ub, double norm_mean, doubl
 		zipf_searching_threshold_ = cumulative_probabilities[ZIPFIAN_THRESHOLD_UNIQ_ELEMENTS];
 		cumulative_probabilities[zipf_size_] = 1.0;
 		small_cumulative_probabilities->at(ZIPFIAN_THRESHOLD_UNIQ_ELEMENTS) = 1.0;
-		std::random_shuffle(index_mapping.begin(), index_mapping.end(), myrandom);
+		std::shuffle(index_mapping.begin(), index_mapping.end(), g);
 
 		double p;
 		for (uint32_t k = 0; k < ZIPFIAN_GENERATOR_SMALL_AREA_SIZE; k++)
