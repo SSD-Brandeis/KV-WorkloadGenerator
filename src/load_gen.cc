@@ -19,11 +19,11 @@
 #include "Generator.h"
 #include "Key.h"
 
-#define U_THRESHOLD 0.1   // U_THRESHOLD*insert_count number of inserts must be made before Updates may take place (applicable when an empty database is being populated)
+#define U_THRESHOLD 1   // U_THRESHOLD*insert_count number of inserts must be made before Updates may take place (applicable when an empty database is being populated)
 #define PD_THRESHOLD 0.1  // PD_THRESHOLD*insert_count number of inserts must be made before Point Deletes may take place (applicable when an empty database is being populated)
 #define RD_THRESHOLD 0.75 // RD_THRESHOLD*insert_count number of inserts must be made before Range Deletes may take place (applicable when an empty database is being populated)
 #define PQ_THRESHOLD 0.1  // PQ_THRESHOLD*insert_count number of inserts must be made before Point Queries may take place (applicable when an empty database is being populated)
-#define RQ_THRESHOLD 0.1  // RQ_THRESHOLD*insert_count number of inserts must be made before Range Queries may take place (applicable when an empty database is being populated)
+#define RQ_THRESHOLD 1  // RQ_THRESHOLD*insert_count number of inserts must be made before Range Queries may take place (applicable when an empty database is being populated)
 #define STRING_KEY_ENABLED false
 #define FILENAME "workload.txt"
 
@@ -38,6 +38,8 @@ long range_delete_count = 0;
 float range_delete_selectivity = 0;
 long point_query_count = 0;
 long range_query_count = 0;
+long range_query_overlapping_count = 0;
+float range_query_overlapping_percent = 1;
 float range_query_selectivity = 0;
 float zero_result_point_delete_proportion = 0;
 float zero_result_point_lookup_proportion = 0;
@@ -201,10 +203,12 @@ void generate_workload()
     long _non_existing_point_query_count = 0;
     long _existing_point_query_count = 0;
     long _range_query_count = 0;
+    long _overlapping_range_query_count = 0;
     long _total_operation_count = 0;
     long _effective_ingestion_count = 0; // insert = +1 ; update = 0 ; point_delete = -1 ; range_delete = -x
     int choice_domain = 6;
     int flag = 0;
+    std::tuple<long, long> _last_range_query = std::make_tuple(0, 0);
 
     uint32_t num_char = (std::string(Key::key_alphanum)).size();
     uint32_t num_preserved_bits = 10;
@@ -638,6 +642,26 @@ void generate_workload()
             }
             // std::cout << "ELSE: start index (= " << start_index << ") + entries_in_range_query (= " << entries_in_range_query << ") > insert_pool_size (= " << insert_pool_size << ")" << std::endl;
             end_index = start_index + entries_in_range_query - 1;
+
+            if (range_query_overlapping_count > 0) {
+                // std::cout << "Range Query Overlapping Count: " << range_query_overlapping_count << " Range Query Count: " << _range_query_count << std::endl << std::flush;
+                // std::cout << "Range Query count % Range Query Overlapping Count: " << _range_query_count % range_query_overlapping_count << std::endl << std::flush;
+                if (std::get<0>(_last_range_query) != 0 && _range_query_count % range_query_overlapping_count != 0){
+                    start_index = std::get<0>(_last_range_query);
+                    end_index = std::get<1>(_last_range_query);
+
+                    if (range_query_overlapping_percent != 1) {
+                        long _num_keys_in_range = (end_index - start_index);
+                        start_index -= (long)(_num_keys_in_range * (1 - range_query_overlapping_percent));
+                        end_index = start_index + _num_keys_in_range;
+
+                        _last_range_query = std::make_tuple(start_index, end_index);
+                    }
+                } else {
+                    _last_range_query = std::make_tuple(start_index, end_index);
+                }
+            }
+
             if (start_index < 0 || entries_in_range_query == 0)
             {
                 std::cout << "not enough entries in tree for range query -- skipping ... ; insert_pool_size = " << insert_pool_size << std::endl;
@@ -698,6 +722,8 @@ void print_workload_parameters(int _insert_count, int _update_count, int _point_
               << "effective_ingestion_count = " << _effective_ingestion_count << ", "
               << "point_query_count = " << point_query_count << ", "
               << "range_query_count = " << range_query_count << ", "
+              << "range_query_overlapping_count = " << range_query_overlapping_count << ", "
+              << "range_query_overlapping_percent = " << range_query_overlapping_percent << ", "
               << "range_query_selectivity = " << range_query_selectivity << ", "
               << "zero_result_point_lookup_proportion= " << zero_result_point_lookup_proportion << ", "
               << "existing_point_query_count = " << existing_point_query_count << ", "
@@ -897,6 +923,8 @@ int parse_arguments2(int argc, char *argv[])
     args::ValueFlag<float> range_delete_selectivity_cmd(group1, "y", "Range delete selectivity [def: 0]", {'y', "range_delete_selectivity"});
     args::ValueFlag<long> point_query_cmd(group1, "Q", "Number of point queries [def: 0]", {'Q', "point_query"});
     args::ValueFlag<long> range_query_cmd(group1, "S", "Number of range queries [def: 0]", {'S', "range_query"});
+    args::ValueFlag<long> range_query_overlapping_count_cmd(group1, "O", "Number of overlapping range queries [def: 0]", {'O', "overlapping_range_query_count"});
+    args::ValueFlag<float> range_query_overlap_percent_cmd(group1, "PO", "Range query overlap percent [def: 100%]", {"PO", "range_query_overlap_percent"});
     args::ValueFlag<float> range_query_selectivity_cmd(group1, "Y", "Range query selectivity [def: 0]", {'Y', "range_query_selectivity"});
     args::ValueFlag<float> zero_result_point_delete_proportion_cmd(group1, "z", "Proportion of zero-result point deletes [def: 0]", {'z', "zero_result_point_delete_proportion"});
     args::ValueFlag<float> zero_result_point_lookup_proportion_cmd(group1, "Z", "Proportion of zero-result point lookups [def: 0]", {'Z', "zero_result_point_lookup_proportion"});
@@ -967,6 +995,8 @@ int parse_arguments2(int argc, char *argv[])
     range_delete_selectivity = range_delete_selectivity_cmd ? args::get(range_delete_selectivity_cmd) : 0;
     point_query_count = point_query_cmd ? args::get(point_query_cmd) : 0;
     range_query_count = range_query_cmd ? args::get(range_query_cmd) : 0;
+    range_query_overlapping_count = range_query_overlapping_count_cmd ? args::get(range_query_overlapping_count_cmd) : 0;
+    range_query_overlapping_percent = range_query_overlap_percent_cmd ? args::get(range_query_overlap_percent_cmd) : 1;
     range_query_selectivity = range_query_selectivity_cmd ? args::get(range_query_selectivity_cmd) : 0;
     zero_result_point_delete_proportion = zero_result_point_delete_proportion_cmd ? args::get(zero_result_point_delete_proportion_cmd) : 0;
     zero_result_point_lookup_proportion = zero_result_point_lookup_proportion_cmd ? args::get(zero_result_point_lookup_proportion_cmd) : 0;
