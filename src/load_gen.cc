@@ -651,8 +651,17 @@ void generate_workload()
                     end_index = std::get<1>(_last_range_query);
 
                     if (range_query_overlapping_percent != 1) {
-                        long _num_keys_in_range = (end_index - start_index);
-                        start_index -= (long)(_num_keys_in_range * (1 - range_query_overlapping_percent));
+                        long _num_keys_in_range = end_index - start_index;
+                        long _shift_range_by = (long)(_num_keys_in_range * (1 - range_query_overlapping_percent));
+                        long temp_start_index = start_index - _shift_range_by;
+                        
+                        if (temp_start_index < 0 && (start_index + _shift_range_by + _num_keys_in_range) < insert_pool_size){
+                            start_index = start_index + _shift_range_by;
+                        }
+                        else {
+                            start_index = temp_start_index;
+                        }
+
                         end_index = start_index + _num_keys_in_range;
 
                         _last_range_query = std::make_tuple(start_index, end_index);
