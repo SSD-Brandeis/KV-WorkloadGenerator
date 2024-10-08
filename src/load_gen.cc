@@ -24,7 +24,7 @@
 #define RD_THRESHOLD 0.75 // RD_THRESHOLD*insert_count number of inserts must be made before Range Deletes may take place (applicable when an empty database is being populated)
 #define PQ_THRESHOLD 0.1  // PQ_THRESHOLD*insert_count number of inserts must be made before Point Queries may take place (applicable when an empty database is being populated)
 #define RQ_THRESHOLD 1  // RQ_THRESHOLD*insert_count number of inserts must be made before Range Queries may take place (applicable when an empty database is being populated)
-#define STRING_KEY_ENABLED false
+#define STRING_KEY_ENABLED true
 #define FILENAME "workload.txt"
 
 // using namespace std;
@@ -204,6 +204,7 @@ void generate_workload()
     long _existing_point_query_count = 0;
     long _range_query_count = 0;
     long _overlapping_range_query_count = 0;
+    bool _positive_direction = false;
     long _total_operation_count = 0;
     long _effective_ingestion_count = 0; // insert = +1 ; update = 0 ; point_delete = -1 ; range_delete = -x
     int choice_domain = 6;
@@ -652,14 +653,19 @@ void generate_workload()
 
                     if (range_query_overlapping_percent != 1) {
                         long _num_keys_in_range = end_index - start_index;
-                        long _shift_range_by = (long)(_num_keys_in_range * (1 - range_query_overlapping_percent));
-                        long temp_start_index = start_index - _shift_range_by;
-                        
-                        if (temp_start_index < 0 && (start_index + _shift_range_by + _num_keys_in_range) < insert_pool_size){
-                            start_index = start_index + _shift_range_by;
+                        long _shift_index_by = (long)(_num_keys_in_range * (1 - range_query_overlapping_percent));
+                        // long temp_start_index = start_index - _shift_index_by;
+
+                        if ((start_index - _shift_index_by) < 0 && !_positive_direction) {
+                            _positive_direction = true;
+                        } else if ((start_index + _shift_index_by + _num_keys_in_range) > insert_pool_size && _positive_direction) {
+                            _positive_direction = false;
                         }
-                        else {
-                            start_index = temp_start_index;
+
+                        if (_positive_direction) {
+                            start_index += _shift_index_by;
+                        } else {
+                            start_index -= _shift_index_by;
                         }
 
                         end_index = start_index + _num_keys_in_range;
