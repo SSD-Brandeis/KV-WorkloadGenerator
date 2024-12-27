@@ -31,6 +31,22 @@ bool Key::operator<(const Key &t) const
   }
 }
 
+bool Key::operator==(const Key &t) const
+{
+    if (string_enabled_ != t.string_enabled_)
+    {
+        return false;
+    }
+    if (string_enabled_)
+    {
+        return key_str_ == t.key_str_;
+    }
+    else
+    {
+        return key_int32_ == t.key_int32_;
+    }
+}
+
 Key Key::operator+(const Key &t)
 {
   if (string_enabled_)

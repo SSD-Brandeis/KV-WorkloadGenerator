@@ -18,6 +18,7 @@
 #include "args.hxx"
 #include "Generator.h"
 #include "Key.h"
+#include "buffer_output.h"
 
 #define U_THRESHOLD 1   // U_THRESHOLD*insert_count number of inserts must be made before Updates may take place (applicable when an empty database is being populated)
 #define PD_THRESHOLD 0.1  // PD_THRESHOLD*insert_count number of inserts must be made before Point Deletes may take place (applicable when an empty database is being populated)
@@ -139,6 +140,68 @@ std::vector<std::string> StringSplit(const std::string &arg, char delim)
     return splits;
 }
 
+void generate_inserts(size_t insert_count, size_t key_size, uint32_t num_preserved_bits) {
+    global_insert_pool.reserve(insert_count);
+    std::unordered_set<Key> unique_keys;
+    unique_keys.reserve(insert_count);
+
+    size_t batch_size = std::min<size_t>(100000, insert_count);
+    size_t generated = 0;
+
+    while (generated < insert_count) {
+        std::vector<Key> batch;
+        batch.reserve(batch_size);
+
+        for (size_t i = 0; i < batch_size && generated < insert_count; ++i) {
+            uint32_t index = insertIndexGenerator->getNext();
+            Key key;
+
+            if (STRING_KEY_ENABLED) {
+                char prefix[3];
+                prefix[0] = Key::key_alphanum[(index / 62) % 62];
+                prefix[1] = Key::key_alphanum[index % 62];
+                prefix[2] = '\0';
+
+                Key key_suffix = Key::get_key(key_size - 2, STRING_KEY_ENABLED);
+                key = Key(prefix) + key_suffix;
+            } else {
+                Key key_suffix = Key::get_key(32 - num_preserved_bits, STRING_KEY_ENABLED);
+                index <<= (32 - num_preserved_bits);
+                key = Key(key_suffix.key_int32_ | index);
+            }
+
+            batch.push_back(key);
+        }
+
+        std::unordered_set<Key> batch_set(batch.begin(), batch.end());
+
+        for (const auto &key : batch_set) {
+            if (unique_keys.insert(key).second) {
+                global_insert_pool.push_back(key);
+                ++generated;
+
+                if (generated >= insert_count) {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+void generate_non_existing_keys(size_t max_non_existing_count, size_t key_size) {
+    global_non_existing_key_pool.reserve(max_non_existing_count);
+    std::unordered_set<Key> unique_keys(global_insert_pool.begin(), global_insert_pool.end());
+    std::unordered_set<Key> non_existing_keys;
+
+    while (non_existing_keys.size() < max_non_existing_count) {
+        Key key = Key::get_key(key_size, STRING_KEY_ENABLED);
+        if (unique_keys.find(key) == unique_keys.end() && non_existing_keys.insert(key).second) {
+            global_non_existing_key_pool.push_back(key);
+        }
+    }
+    std::sort(global_non_existing_key_pool.begin(), global_non_existing_key_pool.end());
+}
+
 void generate_workload()
 {
 
@@ -182,18 +245,22 @@ void generate_workload()
         std::cout << "\033[1;31m ERROR:\033[0m insert_count < point_delete_count + range_delete_count * range_delete_selectivity * insert_count" << std::endl;
         exit(0);
     }
-    std::ofstream fp;
+    // std::ofstream fp;
+    std::string output_filename = "";
     if (out_filename.compare("") == 0)
     {
-
-        fp.open(file_path + FILENAME);
+        output_filename = file_path + FILENAME;
+        // fp.open(file_path + FILENAME);
         //   std::cout << "WL_GEN :: output file = " << file_path << FILENAME << std::endl;
     }
     else
     {
-        fp.open(out_filename);
+        output_filename = out_filename;
+        // fp.open(out_filename);
         //   std::cout << "WL_GEN :: output file = " << file_path << out_filename << std::endl;
     }
+
+    BufferOutput fp(output_filename);
 
     long _insert_count = 0;
     long _update_count = 0;
@@ -226,92 +293,94 @@ void generate_workload()
     }
     char prefix[] = "00";
 
-    while (_insert_count < insert_count)
-    {
-        Key key;
-        Key key_suffix;
-        // std::cout << key << std::endl;
-        do
-        {
+    // while (_insert_count < insert_count)
+    // {
+    //     Key key;
+    //     Key key_suffix;
+    //     // std::cout << key << std::endl;
+    //     do
+    //     {
 
-            uint32_t index = insertIndexGenerator->getNext();
-            if (STRING_KEY_ENABLED)
-            {
-                key_suffix = Key::get_key(key_size - 2, STRING_KEY_ENABLED);
-                prefix[0] = Key::key_alphanum[(index / 62) % 62];
-                prefix[1] = Key::key_alphanum[index % 62];
-                key = Key(prefix);
-                key = key + key_suffix;
-            }
-            else
-            {
-                key_suffix = Key::get_key(32 - num_preserved_bits, STRING_KEY_ENABLED);
-                index <<= (32 - num_preserved_bits);
-                key = Key(key_suffix.key_int32_ | index);
-            }
-        } while (tmp_insert_pool_set.find(key) != tmp_insert_pool_set.end());
-        tmp_insert_pool_set.insert(key);
-        global_insert_pool.push_back(key);
-        _insert_count++;
-        //=======
-        //    if(STRING_KEY_ENABLED) {
-        //        insertIndexGenerator = new Generator(insert_dist, 0, num_char*num_char-1, insert_norm_mean_percentile*num_char*num_char, insert_norm_stddev*num_char, insert_beta_alpha, insert_beta_beta, insert_zipf_alpha, num_char*num_char);
-        //    }
-        //    else {
-        //        uint32_t int32_preserved_insert_domain_size = pow(2, num_preserved_bits);
-        //        insertIndexGenerator = new Generator(insert_dist, 0, int32_preserved_insert_domain_size-1, insert_norm_mean_percentile*int32_preserved_insert_domain_size, insert_norm_stddev*int32_preserved_insert_domain_size, insert_beta_alpha, insert_beta_beta, insert_zipf_alpha, int32_preserved_insert_domain_size);
-        //    }
-        //    char prefix[] = "00";
-        //
-        //    while(_insert_count < insert_count) {
-        //        Key key;
-        //        Key key_suffix;
-        //        // std::cout << key << std::endl;
-        //        do {
-        //            uint32_t index = insertIndexGenerator->getNext();
-        //            if (STRING_KEY_ENABLED) {
-        //                key_suffix = Key::get_key(key_size - 2, STRING_KEY_ENABLED);
-        //                prefix[0] = Key::key_alphanum[(index/62)%62];
-        //                prefix[1] = Key::key_alphanum[index%62];
-        //                key = Key(prefix);
-        //                key = key + key_suffix;
-        //            }
-        //            else {
-        //                key_suffix = Key::get_key(32 - num_preserved_bits, STRING_KEY_ENABLED);
-        //                index <<= (32 - num_preserved_bits);
-        //                key = Key(key_suffix.key_int32_ | index);
-        //            }
-        //        } while(tmp_insert_pool_set.find(key) != tmp_insert_pool_set.end());
-        //        tmp_insert_pool_set.insert(key);
-        //        global_insert_pool.push_back(key);
-        //        _insert_count++;
-        //>>>>>>> 084785aa2e580ba6a054ed624ad772a6ba060ff9
-    }
+    //         uint32_t index = insertIndexGenerator->getNext();
+    //         if (STRING_KEY_ENABLED)
+    //         {
+    //             key_suffix = Key::get_key(key_size - 2, STRING_KEY_ENABLED);
+    //             prefix[0] = Key::key_alphanum[(index / 62) % 62];
+    //             prefix[1] = Key::key_alphanum[index % 62];
+    //             key = Key(prefix);
+    //             key = key + key_suffix;
+    //         }
+    //         else
+    //         {
+    //             key_suffix = Key::get_key(32 - num_preserved_bits, STRING_KEY_ENABLED);
+    //             index <<= (32 - num_preserved_bits);
+    //             key = Key(key_suffix.key_int32_ | index);
+    //         }
+    //     } while (tmp_insert_pool_set.find(key) != tmp_insert_pool_set.end());
+    //     tmp_insert_pool_set.insert(key);
+    //     global_insert_pool.push_back(key);
+    //     _insert_count++;
+    //     //=======
+    //     //    if(STRING_KEY_ENABLED) {
+    //     //        insertIndexGenerator = new Generator(insert_dist, 0, num_char*num_char-1, insert_norm_mean_percentile*num_char*num_char, insert_norm_stddev*num_char, insert_beta_alpha, insert_beta_beta, insert_zipf_alpha, num_char*num_char);
+    //     //    }
+    //     //    else {
+    //     //        uint32_t int32_preserved_insert_domain_size = pow(2, num_preserved_bits);
+    //     //        insertIndexGenerator = new Generator(insert_dist, 0, int32_preserved_insert_domain_size-1, insert_norm_mean_percentile*int32_preserved_insert_domain_size, insert_norm_stddev*int32_preserved_insert_domain_size, insert_beta_alpha, insert_beta_beta, insert_zipf_alpha, int32_preserved_insert_domain_size);
+    //     //    }
+    //     //    char prefix[] = "00";
+    //     //
+    //     //    while(_insert_count < insert_count) {
+    //     //        Key key;
+    //     //        Key key_suffix;
+    //     //        // std::cout << key << std::endl;
+    //     //        do {
+    //     //            uint32_t index = insertIndexGenerator->getNext();
+    //     //            if (STRING_KEY_ENABLED) {
+    //     //                key_suffix = Key::get_key(key_size - 2, STRING_KEY_ENABLED);
+    //     //                prefix[0] = Key::key_alphanum[(index/62)%62];
+    //     //                prefix[1] = Key::key_alphanum[index%62];
+    //     //                key = Key(prefix);
+    //     //                key = key + key_suffix;
+    //     //            }
+    //     //            else {
+    //     //                key_suffix = Key::get_key(32 - num_preserved_bits, STRING_KEY_ENABLED);
+    //     //                index <<= (32 - num_preserved_bits);
+    //     //                key = Key(key_suffix.key_int32_ | index);
+    //     //            }
+    //     //        } while(tmp_insert_pool_set.find(key) != tmp_insert_pool_set.end());
+    //     //        tmp_insert_pool_set.insert(key);
+    //     //        global_insert_pool.push_back(key);
+    //     //        _insert_count++;
+    //     //>>>>>>> 084785aa2e580ba6a054ed624ad772a6ba060ff9
+    // }
+    generate_inserts(insert_count, key_size, num_preserved_bits);
+    generate_non_existing_keys(maximum_unique_non_existing_point_query_count, key_size);
     _insert_count = 0;
-    sort(tmp_insert_pool_vec.begin(), tmp_insert_pool_vec.end());
+    // sort(tmp_insert_pool_vec.begin(), tmp_insert_pool_vec.end());
 
     // generate non-existing keys in advance
-    long _maximum_unique_non_existing_point_query_count = 0;
-    while (_maximum_unique_non_existing_point_query_count < maximum_unique_non_existing_point_query_count)
-    {
-        Key key;
-        if (STRING_KEY_ENABLED)
-            key = Key::get_key(key_size, STRING_KEY_ENABLED);
-        else
-            key = Key::get_key(32, STRING_KEY_ENABLED);
-        while (tmp_insert_pool_set.find(key) != tmp_insert_pool_set.end() || global_non_existing_key_set.find(key) != global_non_existing_key_set.end())
-        {
-            if (STRING_KEY_ENABLED)
-                key = Key::get_key(key_size, STRING_KEY_ENABLED);
-            else
-                key = Key::get_key(32, STRING_KEY_ENABLED);
-        }
-        global_non_existing_key_set.insert(key);
-        global_non_existing_key_pool.push_back(key);
-        _maximum_unique_non_existing_point_query_count++;
-    }
-    tmp_insert_pool_set.clear();
-    sort(global_non_existing_key_pool.begin(), global_non_existing_key_pool.end());
+    // long _maximum_unique_non_existing_point_query_count = 0;
+    // while (_maximum_unique_non_existing_point_query_count < maximum_unique_non_existing_point_query_count)
+    // {
+    //     Key key;
+    //     if (STRING_KEY_ENABLED)
+    //         key = Key::get_key(key_size, STRING_KEY_ENABLED);
+    //     else
+    //         key = Key::get_key(32, STRING_KEY_ENABLED);
+    //     while (tmp_insert_pool_set.find(key) != tmp_insert_pool_set.end() || global_non_existing_key_set.find(key) != global_non_existing_key_set.end())
+    //     {
+    //         if (STRING_KEY_ENABLED)
+    //             key = Key::get_key(key_size, STRING_KEY_ENABLED);
+    //         else
+    //             key = Key::get_key(32, STRING_KEY_ENABLED);
+    //     }
+    //     global_non_existing_key_set.insert(key);
+    //     global_non_existing_key_pool.push_back(key);
+    //     _maximum_unique_non_existing_point_query_count++;
+    // }
+    // tmp_insert_pool_set.clear();
+    // sort(global_non_existing_key_pool.begin(), global_non_existing_key_pool.end());
     double scaling_ratio = 1.0;
     if (STRING_KEY_ENABLED)
         scaling_ratio = num_char;
@@ -696,7 +765,7 @@ void generate_workload()
                 if (!sorted)
                 {
                     sort(insert_pool.begin(), insert_pool.end());
-                    // sorted = true; //if the number of range queries increases by a lot, this might be a problem in terms of execution speed!!!
+                    sorted = true; //if the number of range queries increases by a lot, this might be a problem in terms of execution speed!!!
                 }
                 Key start_key = insert_pool[start_index];
                 Key end_key = insert_pool[end_index];

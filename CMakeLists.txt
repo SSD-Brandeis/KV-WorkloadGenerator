@@ -10,6 +10,7 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/load_gen.cc 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Generator.cc 
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Key.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/buffer_output.cc
 )
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
