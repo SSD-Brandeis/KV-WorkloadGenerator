@@ -272,11 +272,11 @@ void generate_workload()
     long _non_existing_point_query_count = 0;
     long _existing_point_query_count = 0;
     long _range_query_count = 0;
-    long _overlapping_range_query_count = 0;
+    // long _overlapping_range_query_count = 0;
     bool _positive_direction = false;
     long _total_operation_count = 0;
     long _effective_ingestion_count = 0; // insert = +1 ; update = 0 ; point_delete = -1 ; range_delete = -x
-    int choice_domain = 6;
+    // int choice_domain = 6;
     int flag = 0;
     std::tuple<long, long> _last_range_query = std::make_tuple(0, 0);
 
@@ -293,7 +293,7 @@ void generate_workload()
         uint32_t int32_preserved_insert_domain_size = pow(2, num_preserved_bits);
         insertIndexGenerator = new Generator(insert_dist, 0, int32_preserved_insert_domain_size - 1, insert_norm_mean_percentile * int32_preserved_insert_domain_size, insert_norm_stddev * int32_preserved_insert_domain_size, insert_beta_alpha, insert_beta_beta, insert_zipf_alpha, int32_preserved_insert_domain_size);
     }
-    char prefix[] = "00";
+    // char prefix[] = "00";
 
     // while (_insert_count < insert_count)
     // {
@@ -456,7 +456,7 @@ void generate_workload()
             }
 
             long index = updateIndexGenerator->getNext();
-            if (index >= insert_pool.size())
+            if (index >= (int)insert_pool.size())
             { // Generate an insert instead here
                 Key key = global_insert_pool[index];
                 global_insert_pool[index] = global_insert_pool[_insert_count];
@@ -627,7 +627,7 @@ void generate_workload()
                         if (existing_point_lookup_dist == 1)
                         {
                             sort(insert_pool.begin(), insert_pool.end());
-                            double scaling_ratio = 1.0;
+                            // double scaling_ratio = 1.0;
                             if (STRING_KEY_ENABLED)
                                 scaling_ratio = num_char;
                         }
@@ -857,7 +857,7 @@ int get_choice(long insert_pool_size, long insert_count, long update_count, long
     float point_query_fraction = (float)(point_query_count - _point_query_count) / total_operation_count;
     float range_query_fraction = (float)(range_query_count - _range_query_count) / total_operation_count;
     // float cumulative_fraction = insert_fraction + update_fraction + point_delete_fraction + range_delete_fraction + point_query_fraction + range_query_fraction;
-    int choice_domain = 6;
+    // int choice_domain = 6;
     int choice = 0;
 
     float rand_float = static_cast<float>(rand()) / (static_cast<float>(RAND_MAX));
@@ -1174,7 +1174,7 @@ inline void showProgress(const uint32_t &workload_size, const uint32_t &counter)
             fflush(stdout);
         }
     }
-    for (int i = 0; i < counter / (workload_size / 100); i++)
+    for (uint32_t i = 0; i < counter / (workload_size / 100); i++)
     {
         std::cout << "=";
         fflush(stdout);

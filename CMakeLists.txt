@@ -16,3 +16,5 @@ set(SOURCES
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 
 add_executable(load_gen ${SOURCES})
+
+target_compile_options(load_gen PRIVATE -Wall -Wextra -Wunused-variable -Werror)

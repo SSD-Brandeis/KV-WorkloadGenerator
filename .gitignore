@@ -36,3 +36,9 @@
 
 # .vscode
 **/.vscode/**
+
+# workload txt files
+**workload**.txt
+
+# bin
+**/bin/**
