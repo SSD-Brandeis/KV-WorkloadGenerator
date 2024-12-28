@@ -47,13 +47,15 @@ Key Key::get_key(int _key_size, bool string_enabled)
 {
   if (string_enabled)
   {
-    char *s = new char[(int)_key_size];
+    char *s = new char[(int)_key_size + 1];
     for (int i = 0; i < _key_size; ++i)
     {
       s[i] = key_alphanum[rand() % (sizeof(key_alphanum) - 1)];
     }
     s[_key_size] = '\0';
-    return Key(string(s));
+    Key key = Key(std::string(s));  // (shubham): fixes dangling pointer for s
+    delete[] s; 
+    return key;
   }
   else
   {
