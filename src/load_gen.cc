@@ -119,13 +119,15 @@ Key get_key(int _key_size){
 std::string get_value(int _value_size)
 {
     // std::cout << key_size << std::endl;
-    char *s = new char[(int)_value_size];
+    char *s = new char[(int)_value_size + 1];
     for (int i = 0; i < _value_size; ++i)
     {
         s[i] = value_alphanum[rand() % (sizeof(value_alphanum) - 1)];
     }
     s[_value_size] = '\0';
-    return s;
+    std::string value(s);  // (shubham): fixes dangling pointer for s
+    delete[] s;
+    return value;
 }
 
 std::vector<std::string> StringSplit(const std::string &arg, char delim)
