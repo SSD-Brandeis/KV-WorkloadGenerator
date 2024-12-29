@@ -882,7 +882,7 @@ int main(int argc, char *argv[])
     if (!entry_size)
     {
         std::cout << "\033[1;31m ERROR:\033[0m entry_size = 0" << std::endl;
-        exit(0);
+        exit(1);
     }
 
     /*
@@ -917,7 +917,7 @@ int main(int argc, char *argv[])
     // if(load_from_existing_workload && out_filename.compare("") == 0){
     //     std::cerr << "\033[0;33m Warning:\033[0m workload.txt will be overwritten ! " << std::endl;
     // }
-    return 1;
+    return 0;
 }
 
 int parse_arguments2(int argc, char *argv[])
