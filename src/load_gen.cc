@@ -754,7 +754,7 @@ void generate_workload()
                 std::cout << "start_index = " << start_index << " ; entries_in_range_query = " << entries_in_range_query << std::endl;
                 flag++;
                 if (flag > 20)
-                    ; // exit(-1);
+                    {} // exit(-1);
             }
             else
             {
@@ -883,25 +883,30 @@ int get_choice(long insert_pool_size, long insert_count, long update_count, long
         if (_range_query_count < range_query_count && insert_pool_size > 0 && _insert_count >= RQ_THRESHOLD * insert_count)
             break;
         choice--;
+        [[fallthrough]];
     case 5:
         if (_point_query_count < point_query_count && insert_pool_size > 0 && _insert_count >= PQ_THRESHOLD * insert_count)
             break;
         // choice = (choice + 1)%choice_domain;
         choice--;
+        [[fallthrough]];
     case 4:
         if (_range_delete_count < range_delete_count && insert_pool_size > 0 && _insert_count >= RD_THRESHOLD * insert_count)
             break;
         choice--;
+        [[fallthrough]];
     case 3:
         if (_point_delete_count < point_delete_count && insert_pool_size > 0 && _insert_count >= PD_THRESHOLD * insert_count)
             break;
         // choice = (choice + 1)%choice_domain;
         choice--;
+        [[fallthrough]];
     case 2:
         if (_update_count < update_count && insert_pool_size > 0 && _insert_count >= U_THRESHOLD * insert_count)
             break;
         // choice = (choice + 1)%choice_domain;
         choice--;
+        [[fallthrough]];
     case 1: // for inserts
         if (_insert_count < insert_count)
             break;
