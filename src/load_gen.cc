@@ -703,11 +703,8 @@ void generate_workload()
 
             // for now we use the hardcoded range selectivity
             long insert_pool_size = insert_pool.size();
-            std::cout << "Insert Pool Size: " << insert_pool_size << std::endl;
             long entries_in_range_query = floor(range_query_selectivity * insert_pool_size); // computed on the current size of insert pool
-            std::cout << "Entries in Range Queries: " << entries_in_range_query << std::endl;
             long start_index = (long)(rand() % (insert_pool_size - entries_in_range_query));
-            std::cout << "Start Index: " << start_index << " (Insert Pool Size - Entries In Range Query): " << (insert_pool_size - entries_in_range_query) << std::endl;
             long end_index = -1;
             // if (start_index + entries_in_range_query > insert_pool_size)
             // {
