@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <algorithm>
+#include <cassert>
 #include <fstream>
 #include <cmath>
 #include <iomanip>
@@ -459,8 +460,11 @@ void generate_workload()
             if (index >= (int)insert_pool.size())
             { // Generate an insert instead here
                 Key key = global_insert_pool[index];
+                assert(index <  static_cast<long>(global_insert_pool.size()));
+                assert(_insert_count < static_cast<long> (global_insert_pool.size()));
                 global_insert_pool[index] = global_insert_pool[_insert_count];
-                global_insert_pool[_insert_count] = key;
+                // global_insert_pool[_insert_count] = key;
+                global_insert_pool.push_back(key);
                 Key value = get_value(entry_size - key_size);
                 if (sorted)
                 {
