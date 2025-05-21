@@ -40,6 +40,7 @@ float range_delete_selectivity = 0;
 long point_query_count = 0;
 long range_query_count = 0;
 long range_query_overlapping_count = 0;
+bool enable_ycsb_capped_range_queries = 0;
 float range_query_overlapping_percent = 1;
 float range_query_selectivity = 0;
 float zero_result_point_delete_proportion = 0;
@@ -100,6 +101,16 @@ void generate_workload();
 void print_workload_parameters(int _insert_count, int _update_count, int _point_delete_count, int _range_delete_count, int _effective_ingestion_count);
 std::string get_value(int _value_size);
 inline void showProgress(const uint32_t &n, const uint32_t &count);
+inline float get_range_query_selectivity() {
+    if (!enable_ycsb_capped_range_queries) {
+        return range_query_selectivity;
+    }
+
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> dis(0.0f, range_query_selectivity);
+    return dis(gen);
+}
 
 /*
 uint32_t get_key_as_uint32_t() { // random number generator still not foolproof
@@ -703,7 +714,8 @@ void generate_workload()
 
             // for now we use the hardcoded range selectivity
             long insert_pool_size = insert_pool.size();
-            long entries_in_range_query = floor(range_query_selectivity * insert_pool_size); // computed on the current size of insert pool
+            auto rq_selectivity_ = get_range_query_selectivity();
+            long entries_in_range_query = floor(rq_selectivity_ * insert_pool_size); // computed on the current size of insert pool
             long start_index = (long)(rand() % (insert_pool_size - entries_in_range_query));
             long end_index = -1;
             // if (start_index + entries_in_range_query > insert_pool_size)
@@ -1017,6 +1029,7 @@ int parse_arguments2(int argc, char *argv[])
     args::ValueFlag<long> range_query_overlapping_count_cmd(group1, "O", "Number of overlapping range queries [def: 0]", {'O', "overlapping_range_query_count"});
     args::ValueFlag<float> range_query_overlap_percent_cmd(group1, "PO", "Range query overlap percent [def: 100%]", {"PO", "range_query_overlap_percent"});
     args::ValueFlag<float> range_query_selectivity_cmd(group1, "Y", "Range query selectivity [def: 0]", {'Y', "range_query_selectivity"});
+    args::ValueFlag<bool> ycsb_capped_range_queries_cmd(group1, "YCSB", "Range Query selectivity is random and capped by given selectivity (like YCSB)", {"YCSB", "ycsb_range_queries"});
     args::ValueFlag<float> zero_result_point_delete_proportion_cmd(group1, "z", "Proportion of zero-result point deletes [def: 0]", {'z', "zero_result_point_delete_proportion"});
     args::ValueFlag<float> zero_result_point_lookup_proportion_cmd(group1, "Z", "Proportion of zero-result point lookups [def: 0]", {'Z', "zero_result_point_lookup_proportion"});
     args::ValueFlag<float> unique_zero_result_point_lookup_proportion_cmd(group1, "UZ", "Proportion of maximum unique zero-result point lookups [def: 0.5]", {"UZ", "unique_zero_result_point_lookup_proportion"});
@@ -1089,6 +1102,7 @@ int parse_arguments2(int argc, char *argv[])
     range_query_overlapping_count = range_query_overlapping_count_cmd ? args::get(range_query_overlapping_count_cmd) : 0;
     range_query_overlapping_percent = range_query_overlap_percent_cmd ? args::get(range_query_overlap_percent_cmd) : 1;
     range_query_selectivity = range_query_selectivity_cmd ? args::get(range_query_selectivity_cmd) : 0;
+    enable_ycsb_capped_range_queries = ycsb_capped_range_queries_cmd ? args::get(ycsb_capped_range_queries_cmd): 0;
     zero_result_point_delete_proportion = zero_result_point_delete_proportion_cmd ? args::get(zero_result_point_delete_proportion_cmd) : 0;
     zero_result_point_lookup_proportion = zero_result_point_lookup_proportion_cmd ? args::get(zero_result_point_lookup_proportion_cmd) : 0;
     if (point_query_count != 0 && (zero_result_point_lookup_proportion < 0 || zero_result_point_lookup_proportion > 1))
