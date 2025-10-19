@@ -43,6 +43,8 @@ long range_query_overlapping_count = 0;
 bool enable_ycsb_capped_range_queries = 0;
 float range_query_overlapping_percent = 1;
 float range_query_selectivity = 0;
+bool short_range_queries_in_range_of_long_range_queries = false;
+float how_short_range_queries_in_range_of_long_range_queries = 0.01; // def to 1%
 float zero_result_point_delete_proportion = 0;
 float zero_result_point_lookup_proportion = 0;
 long existing_point_query_count = 0;
@@ -734,7 +736,23 @@ void generate_workload()
                     start_index = std::get<0>(_last_range_query);
                     end_index = std::get<1>(_last_range_query);
 
-                    if (range_query_overlapping_percent != 1) {
+                    if (short_range_queries_in_range_of_long_range_queries) {
+                        long entries_in_long_range_query = end_index - start_index;
+                        int cuttoff = static_cast<int>(std::floor(entries_in_long_range_query * how_short_range_queries_in_range_of_long_range_queries));
+                        int max_index = end_index - cuttoff;
+
+                        if (max_index < start_index) {
+                            std::cerr << "Invalid range: selectivity of how_short_range_queries_in_range_of_long_range_queries too large or long range query too small\n";
+                        }
+
+                        std::random_device rd;
+                        std::mt19937 gen(rd());
+                        std::uniform_int_distribution<int> how_short_dist(start_index, max_index - 1);
+
+                        int random_index = how_short_dist(gen);
+                        start_index = random_index;
+                        end_index = random_index + cuttoff;
+                    } else if (range_query_overlapping_percent != 1) {
                         long _num_keys_in_range = end_index - start_index;
                         long _shift_index_by = (long)(_num_keys_in_range * (1 - range_query_overlapping_percent));
                         // long temp_start_index = start_index - _shift_index_by;
@@ -1029,6 +1047,8 @@ int parse_arguments2(int argc, char *argv[])
     args::ValueFlag<long> range_query_overlapping_count_cmd(group1, "O", "Number of overlapping range queries [def: 0]", {'O', "overlapping_range_query_count"});
     args::ValueFlag<float> range_query_overlap_percent_cmd(group1, "PO", "Range query overlap percent [def: 100%]", {"PO", "range_query_overlap_percent"});
     args::ValueFlag<float> range_query_selectivity_cmd(group1, "Y", "Range query selectivity [def: 0]", {'Y', "range_query_selectivity"});
+    args::ValueFlag<bool> short_range_queries_in_range_of_long_range_queries_cmd(group1, "SRQ", "Short range queries after long range queries [def:0]", {"SRQ", "short_range_queries_in_range_of_long_range_queries"});
+    args::ValueFlag<float> how_short_range_queries_in_range_of_long_range_queries_cmd(group1, "HSRQ", "Selectivity of short range query after long range query def[1%]", {"HSRQ", "how_short_range_queries_in_range_of_long_range_queries"});
     args::ValueFlag<bool> ycsb_capped_range_queries_cmd(group1, "YCSB", "Range Query selectivity is random and capped by given selectivity (like YCSB)", {"YCSB", "ycsb_range_queries"});
     args::ValueFlag<float> zero_result_point_delete_proportion_cmd(group1, "z", "Proportion of zero-result point deletes [def: 0]", {'z', "zero_result_point_delete_proportion"});
     args::ValueFlag<float> zero_result_point_lookup_proportion_cmd(group1, "Z", "Proportion of zero-result point lookups [def: 0]", {'Z', "zero_result_point_lookup_proportion"});
@@ -1102,6 +1122,8 @@ int parse_arguments2(int argc, char *argv[])
     range_query_overlapping_count = range_query_overlapping_count_cmd ? args::get(range_query_overlapping_count_cmd) : 0;
     range_query_overlapping_percent = range_query_overlap_percent_cmd ? args::get(range_query_overlap_percent_cmd) : 1;
     range_query_selectivity = range_query_selectivity_cmd ? args::get(range_query_selectivity_cmd) : 0;
+    short_range_queries_in_range_of_long_range_queries = short_range_queries_in_range_of_long_range_queries_cmd ? args::get(short_range_queries_in_range_of_long_range_queries_cmd) : short_range_queries_in_range_of_long_range_queries;
+    how_short_range_queries_in_range_of_long_range_queries = how_short_range_queries_in_range_of_long_range_queries_cmd ? args::get(how_short_range_queries_in_range_of_long_range_queries_cmd) : how_short_range_queries_in_range_of_long_range_queries;
     enable_ycsb_capped_range_queries = ycsb_capped_range_queries_cmd ? args::get(ycsb_capped_range_queries_cmd): 0;
     zero_result_point_delete_proportion = zero_result_point_delete_proportion_cmd ? args::get(zero_result_point_delete_proportion_cmd) : 0;
     zero_result_point_lookup_proportion = zero_result_point_lookup_proportion_cmd ? args::get(zero_result_point_lookup_proportion_cmd) : 0;
