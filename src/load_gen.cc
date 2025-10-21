@@ -730,51 +730,50 @@ void generate_workload()
             end_index = start_index + entries_in_range_query - 1;
 
             if (range_query_overlapping_count > 0) {
-                // std::cout << "Range Query Overlapping Count: " << range_query_overlapping_count << " Range Query Count: " << _range_query_count << std::endl << std::flush;
-                // std::cout << "Range Query count % Range Query Overlapping Count: " << _range_query_count % range_query_overlapping_count << std::endl << std::flush;
-                if (std::get<0>(_last_range_query) != 0 && _range_query_count % range_query_overlapping_count != 0){
-                    start_index = std::get<0>(_last_range_query);
-                    end_index = std::get<1>(_last_range_query);
+                bool is_new_long_range = (_range_query_count % range_query_overlapping_count == 0);
 
+                if (is_new_long_range || _range_query_count == 0) {
+                    // Start a new long range query
+                    _last_range_query = std::make_tuple(start_index, end_index);
+                } else {
+                    // Reuse the last long query range
+                    start_index = std::get<0>(_last_range_query);
+                    end_index   = std::get<1>(_last_range_query);
+                    
                     if (short_range_queries_in_range_of_long_range_queries) {
                         long entries_in_long_range_query = end_index - start_index;
-                        int cuttoff = static_cast<int>(std::floor(entries_in_long_range_query * how_short_range_queries_in_range_of_long_range_queries));
-                        int max_index = end_index - cuttoff;
-
-                        if (max_index < start_index) {
-                            std::cerr << "Invalid range: selectivity of how_short_range_queries_in_range_of_long_range_queries too large or long range query too small\n";
+                        int cutoff = static_cast<int>(std::floor(entries_in_long_range_query *
+                            how_short_range_queries_in_range_of_long_range_queries));
+                            int max_index = end_index - cutoff;
+                            
+                            if (max_index < start_index) {
+                                std::cerr << "Invalid short range: selectivity too large or long range too small\n";
+                            }
+                            
+                            std::random_device rd;
+                            std::mt19937 gen(rd());
+                            std::uniform_int_distribution<int> how_short_dist(start_index, max_index - 1);
+                            int random_index = how_short_dist(gen);
+                            start_index = random_index;
+                            end_index = random_index + cutoff;
                         }
-
-                        std::random_device rd;
-                        std::mt19937 gen(rd());
-                        std::uniform_int_distribution<int> how_short_dist(start_index, max_index - 1);
-
-                        int random_index = how_short_dist(gen);
-                        start_index = random_index;
-                        end_index = random_index + cuttoff;
-                    } else if (range_query_overlapping_percent != 1) {
-                        long _num_keys_in_range = end_index - start_index;
-                        long _shift_index_by = (long)(_num_keys_in_range * (1 - range_query_overlapping_percent));
-                        // long temp_start_index = start_index - _shift_index_by;
-
-                        if ((start_index - _shift_index_by) < 0 && !_positive_direction) {
-                            _positive_direction = true;
-                        } else if ((start_index + _shift_index_by + _num_keys_in_range) > insert_pool_size && _positive_direction) {
-                            _positive_direction = false;
+                        else if (range_query_overlapping_percent != 1) {
+                            long num_keys_in_range = end_index - start_index;
+                            long shift_index_by = static_cast<long>(num_keys_in_range * (1 - range_query_overlapping_percent));
+                            
+                            if ((start_index - shift_index_by) < 0 && !_positive_direction) {
+                                _positive_direction = true;
+                            } else if ((start_index + shift_index_by + num_keys_in_range) > insert_pool_size && _positive_direction) {
+                                _positive_direction = false;
+                            }
+                            
+                            if (_positive_direction) {
+                                start_index += shift_index_by;
+                            } else {
+                                start_index -= shift_index_by;
+                            }
+                            end_index = start_index + num_keys_in_range;
                         }
-
-                        if (_positive_direction) {
-                            start_index += _shift_index_by;
-                        } else {
-                            start_index -= _shift_index_by;
-                        }
-
-                        end_index = start_index + _num_keys_in_range;
-
-                        _last_range_query = std::make_tuple(start_index, end_index);
-                    }
-                } else {
-                    _last_range_query = std::make_tuple(start_index, end_index);
                 }
             }
 
