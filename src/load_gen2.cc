@@ -45,10 +45,6 @@ float range_query_overlapping_percent = 1;
 float range_query_selectivity = 0;
 bool short_range_queries_in_range_of_long_range_queries = false;
 float how_short_range_queries_in_range_of_long_range_queries = 0.01; // def to 1%
-bool _has_last_range = false;
-std::pair<long, long> _last_range_query;
-long _batch_pos = 0;
-
 float zero_result_point_delete_proportion = 0;
 float zero_result_point_lookup_proportion = 0;
 long existing_point_query_count = 0;
@@ -221,95 +217,6 @@ void generate_non_existing_keys(size_t max_non_existing_count, size_t key_size) 
     std::sort(global_non_existing_key_pool.begin(), global_non_existing_key_pool.end());
 }
 
-std::pair<long, long> generate_range_query_batched(
-    long insert_pool_size,
-    double selectivity,
-    double overlap_percent,
-    long overlapping_count,
-    std::pair<long, long>& last_range,
-    bool& has_last_range,
-    long& batch_pos
-) {
-    // ---- compute range size ----
-    long range_size = static_cast<long>(std::floor(selectivity * insert_pool_size));
-    if (range_size <= 0 || range_size > insert_pool_size) {
-        throw std::runtime_error("Invalid range size");
-    }
-
-    // ---- decide whether to start a new batch ----
-    bool start_new_batch = (!has_last_range) || (batch_pos == 0);
-
-    long start, end;
-
-    if (start_new_batch) {
-        // ---- random anchor ----
-        start = rand() % (insert_pool_size - range_size + 1);
-    } else {
-        // ---- enforce overlap in ELEMENTS ----
-        long prev_start = last_range.first;
-
-        long overlap_elems =
-            static_cast<long>(std::round(overlap_percent * range_size));
-
-        if (overlap_percent > 0.0 && overlap_elems < 1) {
-            overlap_elems = 1;  // minimum representable overlap
-        }
-
-        if (overlap_elems > range_size) {
-            overlap_elems = range_size;
-        }
-
-        long shift = range_size - overlap_elems;
-
-        long right = prev_start + shift;
-        long left  = prev_start - shift;
-
-        bool can_right = (right + range_size <= insert_pool_size);
-        bool can_left  = (left >= 0);
-
-        if (can_right && can_left) {
-            start = (rand() % 2) ? right : left;
-        } else if (can_right) {
-            start = right;
-        } else if (can_left) {
-            start = left;
-        } else {
-            // fallback: clamp but preserve overlap
-            start = std::max(0L,
-                    std::min(prev_start, insert_pool_size - range_size));
-        }
-    }
-
-    end = start + range_size - 1;
-
-    // if (!start_new_batch) {
-    //     long prev_start = last_range.first;
-    //     long prev_end   = last_range.second;
-
-    //     long intersect_start = std::max(prev_start, start);
-    //     long intersect_end   = std::min(prev_end, end);
-
-    //     long overlap_elems =
-    //         (intersect_start <= intersect_end)
-    //             ? (intersect_end - intersect_start + 1)
-    //             : 0;
-
-    //     std::cout << "requested=" << overlap_percent
-    //               << " actual="
-    //               << static_cast<double>(overlap_elems) / range_size
-    //               << " (" << overlap_elems << "/" << range_size << ")"
-    //               << std::endl;
-    // }
-
-    // ---- update state ----
-    last_range = {start, end};
-    has_last_range = true;
-    batch_pos = (batch_pos + 1) % overlapping_count;
-
-    return last_range;
-}
-
-
 void generate_workload()
 {
 
@@ -379,12 +286,12 @@ void generate_workload()
     long _existing_point_query_count = 0;
     long _range_query_count = 0;
     // long _overlapping_range_query_count = 0;
-    // bool _positive_direction = false;
+    bool _positive_direction = false;
     long _total_operation_count = 0;
     long _effective_ingestion_count = 0; // insert = +1 ; update = 0 ; point_delete = -1 ; range_delete = -x
     // int choice_domain = 6;
     int flag = 0;
-    std::pair<long, long> _last_range_query;
+    std::tuple<long, long> _last_range_query = std::make_tuple(0, 0);
 
     uint32_t num_char = (std::string(Key::key_alphanum)).size();
     uint32_t num_preserved_bits = 10;
@@ -802,31 +709,107 @@ void generate_workload()
         }
 
         else if (choice == 6)
-        {
-            if (!sorted) {
-                sort(insert_pool.begin(), insert_pool.end());
-                sorted = true;
+        { // RANGE QUERY
+            // selectivity is computed on the current size of the insert pool (insert_pool.size()) and NOT the total inserts to be made (insert_count)
+
+            // the following code-block generates range selectivity as a random number
+
+            // for now we use the hardcoded range selectivity
+            long insert_pool_size = insert_pool.size();
+            auto rq_selectivity_ = get_range_query_selectivity();
+            long entries_in_range_query = floor(rq_selectivity_ * insert_pool_size); // computed on the current size of insert pool
+            long start_index = (long)(rand() % (insert_pool_size - entries_in_range_query));
+            long end_index = -1;
+            end_index = start_index + entries_in_range_query - 1;
+
+            if (range_query_overlapping_count > 0) {
+                bool is_new_long_range = (_range_query_count % range_query_overlapping_count == 0);
+
+                if (is_new_long_range || _range_query_count == 0) {
+                    // Start a new long range query
+                    _last_range_query = std::make_tuple(start_index, end_index);
+                } else {
+                    // Reuse the last long query range
+                    start_index = std::get<0>(_last_range_query);
+                    end_index   = std::get<1>(_last_range_query);
+                    
+                    if (short_range_queries_in_range_of_long_range_queries) {
+                        long entries_in_long_range_query = end_index - start_index;
+                        int cutoff = static_cast<int>(std::floor(entries_in_long_range_query *
+                            how_short_range_queries_in_range_of_long_range_queries));
+                            int max_index = end_index - cutoff;
+                            
+                            if (max_index < start_index) {
+                                std::cerr << "Invalid short range: selectivity too large or long range too small\n";
+                            }
+                            
+                            std::random_device rd;
+                            std::mt19937 gen(rd());
+                            std::uniform_int_distribution<int> how_short_dist(start_index, max_index - 1);
+                            int random_index = how_short_dist(gen);
+                            start_index = random_index;
+                            end_index = random_index + cutoff;
+                        }
+                        else if (range_query_overlapping_percent != 1) {
+                            long num_keys_in_range = end_index - start_index;
+                            long shift_index_by = static_cast<long>(num_keys_in_range * (1 - range_query_overlapping_percent));
+                            
+                            if ((start_index - shift_index_by) < 0 && !_positive_direction) {
+                                _positive_direction = true;
+                            } else if ((start_index + shift_index_by + num_keys_in_range) > insert_pool_size && _positive_direction) {
+                                _positive_direction = false;
+                            }
+                            
+                            if (_positive_direction) {
+                                start_index += shift_index_by;
+                            } else {
+                                start_index -= shift_index_by;
+                            }
+                            end_index = start_index + num_keys_in_range;
+                        }
+                }
             }
 
-            auto [start_index, end_index] =
-                generate_range_query_batched(
-                    insert_pool.size(),
-                    get_range_query_selectivity(),
-                    range_query_overlapping_percent,
-                    range_query_overlapping_count,  // e.g. 10
-                    _last_range_query,
-                    _has_last_range,
-                    _batch_pos
-                );
+            if (start_index < 0 || entries_in_range_query == 0)
+            {
+                std::cout << "not enough entries in tree for range query -- skipping ... ; insert_pool_size = " << insert_pool_size << std::endl;
+                std::cout << "start_index = " << start_index << " ; entries_in_range_query = " << entries_in_range_query << std::endl;
+                flag++;
+                if (flag > 20)
+                    {} // exit(-1);
+            }
+            else
+            {
+                // std::cout << "Issuing range query from index " << start_index << " to " << end_index << std::endl;
 
-            Key start_key = insert_pool[start_index];
-            Key end_key   = insert_pool[end_index];
+                // std::cout << "Before sorting = ";
+                // for (int i = 0; i < insert_pool.size(); ++i)
+                //     std::cout << insert_pool[i] << ' ';
+                // std::cout << std::endl;
+                if (!sorted)
+                {
+                    sort(insert_pool.begin(), insert_pool.end());
+                    sorted = true; //if the number of range queries increases by a lot, this might be a problem in terms of execution speed!!!
+                }
+                Key start_key = insert_pool[start_index];
+                Key end_key = insert_pool[end_index];
 
-            fp << "S " << start_key << " " << end_key << std::endl;
+                // std::cout << "After sorting and before range deleting = ";
+                // for (int i = 0; i < insert_pool.size(); ++i)
+                //     std::cout << insert_pool[i] << ' ';
+                // std::cout << std::endl;
 
-            _range_query_count++;
-            _total_operation_count++;
+                // std::cout << "S " << start_key << " " << end_key << std::endl;
+                fp << "S " << start_key << " " << end_key << std::endl;
+                _range_query_count++;
+                _total_operation_count++;
+            }
         }
+
+        // Progress bar
+        //  if (total_operation_count > 100)
+        //      if(_total_operation_count % (total_operation_count/100) == 0)
+        //          showProgress(total_operation_count, _total_operation_count);
     }
 
     print_workload_parameters(_insert_count, _update_count, _point_delete_count, _range_delete_count, _effective_ingestion_count);
