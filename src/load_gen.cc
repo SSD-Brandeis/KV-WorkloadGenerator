@@ -562,6 +562,10 @@ void generate_workload()
             }
 
             long index = updateIndexGenerator->getNext();
+            if (index >= (int)insert_pool.size() && _insert_count >= (long)global_insert_pool.size())
+            { // minimal fix (diagnostic): every key is inserted, so there is none to insert instead; update a live key
+                index = index % insert_pool.size();
+            }
             if (index >= (int)insert_pool.size())
             { // Generate an insert instead here
                 Key key = global_insert_pool[index];
