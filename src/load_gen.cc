@@ -709,7 +709,19 @@ void generate_workload()
                 //     std::cout << insert_pool[i] << ' ';
                 // std::cout << std::endl;
 
-                sort(insert_pool.begin(), insert_pool.end());
+                if (!sorted)
+                { // sort once, as the range query branch does: erasing keeps the pool sorted, and inserts into a
+                  // sorted pool go in at their sorted place (upper_bound), so later range deletes need no sort
+                    sort(insert_pool.begin(), insert_pool.end());
+                    sorted = true;
+                }
+#ifdef KVBENCH_CHECK_SORTED
+                if (!std::is_sorted(insert_pool.begin(), insert_pool.end()))
+                {
+                    std::cerr << "KVBENCH_CHECK_SORTED: pool not sorted at range delete " << _range_delete_count << std::endl;
+                    exit(3);
+                }
+#endif
                 Key start_key = insert_pool[start_index];
                 Key end_key = insert_pool[end_index];
 
