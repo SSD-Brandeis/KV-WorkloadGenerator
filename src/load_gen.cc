@@ -20,12 +20,25 @@
 #include "Key.h"
 #include "buffer_output.h"
 
+#ifndef U_THRESHOLD
 #define U_THRESHOLD 1   // U_THRESHOLD*insert_count number of inserts must be made before Updates may take place (applicable when an empty database is being populated)
+#endif
+#ifndef PD_THRESHOLD
 #define PD_THRESHOLD 0.1  // PD_THRESHOLD*insert_count number of inserts must be made before Point Deletes may take place (applicable when an empty database is being populated)
+#endif
+#ifndef RD_THRESHOLD
 #define RD_THRESHOLD 0.1 // RD_THRESHOLD*insert_count number of inserts must be made before Range Deletes may take place (applicable when an empty database is being populated)
+#endif
+#ifndef PQ_THRESHOLD
 #define PQ_THRESHOLD 1  // PQ_THRESHOLD*insert_count number of inserts must be made before Point Queries may take place (applicable when an empty database is being populated)
+#endif
+#ifndef RQ_THRESHOLD
 #define RQ_THRESHOLD 1  // RQ_THRESHOLD*insert_count number of inserts must be made before Range Queries may take place (applicable when an empty database is being populated)
+#endif
 #define STRING_KEY_ENABLED true
+// Fig. 7 load/execution split (X-Bench revision, 2026-11-10): time since process start of the first
+// non-insert operation, printed once as KVbench_LoadPhase_End
+static const auto kvbench_process_start = std::chrono::steady_clock::now();
 #define FILENAME "workload.txt"
 
 // using namespace std;
@@ -510,6 +523,16 @@ void generate_workload()
     {
         int choice = get_choice(insert_pool.size(), insert_count, update_count, point_delete_count, range_delete_count, point_query_count, range_query_count, _insert_count, _update_count, _point_delete_count, _range_delete_count, _point_query_count, _range_query_count);
         // std::cout << "choice = " << choice << std::endl;
+
+        static bool load_phase_end_printed = false;
+        if (!load_phase_end_printed && choice != 0 && choice != 1)
+        {
+            load_phase_end_printed = true;
+            std::ostringstream load_phase_end; // own stream: std::cout keeps its formatting
+            load_phase_end << std::fixed << std::setprecision(6)
+                           << std::chrono::duration<double>(std::chrono::steady_clock::now() - kvbench_process_start).count();
+            std::cout << "KVbench_LoadPhase_End: " << load_phase_end.str() << std::endl << std::flush;
+        }
 
         if (choice == 0)
             continue;
