@@ -232,6 +232,11 @@ std::pair<long, long> generate_range_query_batched(
 ) {
     // ---- compute range size ----
     long range_size = static_cast<long>(std::floor(selectivity * insert_pool_size));
+    while (range_size <= 0 && enable_ycsb_capped_range_queries && insert_pool_size > 0) {
+        // minimal fix: a random (YCSB) selectivity under one key is drawn again, as the range query code before
+        // 699bc10 did (it skipped the empty range query and drew again)
+        range_size = static_cast<long>(std::floor(get_range_query_selectivity() * insert_pool_size));
+    }
     if (range_size <= 0 || range_size > insert_pool_size) {
         throw std::runtime_error("Invalid range size");
     }
@@ -304,7 +309,8 @@ std::pair<long, long> generate_range_query_batched(
     // ---- update state ----
     last_range = {start, end};
     has_last_range = true;
-    batch_pos = (batch_pos + 1) % overlapping_count;
+    // minimal fix: no overlap count given (0) means batches of one range query, instead of a modulo by zero
+    batch_pos = (batch_pos + 1) % std::max(overlapping_count, 1L);
 
     return last_range;
 }
